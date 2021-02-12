@@ -13,6 +13,7 @@ Given one or more .csv files containing relevant data:
 - Exports all occurrences ('hits') in a new csv with context and hit type, and anonymizes transcript metadata
 
 ### Requirements:
+- Python 3
 - [spacy v3.0+](https://spacy.io/usage)
 - [spacy en_core_web_sm model](https://spacy.io/usage)
 
