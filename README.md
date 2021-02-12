@@ -13,9 +13,8 @@ Given one or more .csv files containing relevant data:
 - Exports all occurrences ('hits') in a new csv with context and hit type, and anonymizes transcript metadata
 
 ### Requirements:
-- [pandas](https://pandas.pydata.org/pandas-docs/stable/getting_started/install.html)
-- [numpy](https://numpy.org/install/)
-- [spacy v3.0+ and en_core_web_sm model](https://spacy.io/usage)
+- [spacy v3.0+](https://spacy.io/usage)
+- [spacy en_core_web_sm model](https://spacy.io/usage)
 
 ### Usage:
 ```bash
