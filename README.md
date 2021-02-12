@@ -21,4 +21,13 @@ Given one or more .csv files containing relevant data:
 ```bash
 python3 script.py [mode] [file] [export_file]
 ```
-[mode] must be either 'ask_chat' or 'jira' depending on the input files. One or more input files may be added in between [mode] and [export_file]. Analysis data will be exported to a new file with name [export_file].
+
+```bash
+python3 script.py ask_chat file1.csv export.csv
+```
+
+```bash
+python3 script.py jira file1.csv file2.csv file3.csv export.csv
+```
+
+[mode] must be either 'ask_chat' or 'jira' depending on the input files. One or more input files may be added in between [mode] and [export_file]. Analysis data will be exported to a new file with name [export_file], assuming this file does not exist already.
