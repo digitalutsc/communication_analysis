@@ -1,7 +1,6 @@
-import sys, csv, re, pandas, numpy, time
+import sys, csv, re, time
 import spacy
 from spacy import displacy
-from collections import Counter
 import math
 import en_core_web_sm
 nlp = spacy.load("en_core_web_sm")
@@ -18,10 +17,13 @@ def convertcsv(filename):
     Returns:
         A list with the 0th index containing the data of the csv in list object form and the 1st index containg a list object storing each column header.
     """
-    data = pandas.read_csv(filename, engine="python")
-    headers = data.columns.values.tolist()
-    data = data.replace(numpy.nan, '', regex=True)
-    data = data.to_numpy().tolist()
+    data = []
+    headers = []
+    with open(filename) as csvfile:
+        reader = csv.reader(csvfile)
+        headers = next(reader)
+        for row in reader:
+            data.append(row)
     return [data, headers]
 
 def get_jira_data_array_text_location(headers):
