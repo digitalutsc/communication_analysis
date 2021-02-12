@@ -26,14 +26,17 @@ def convertcsv(filename):
             data.append(row)
     return [data, headers]
 
-def get_jira_data_array_text_location(headers):
+def get_data_array_text_location(headers):
     """
-    For JIRA logs, sets global variable data_array_text_location to the column index with header "Description". All text in this column is to be analyzed by the script.
+    Sets global variable data_array_text_location to the column index that will contain text to analyze.
     Parameters:
         headers: A List containg the name of each column header.
     """
     global data_array_text_location
-    data_array_text_location = headers.index("Description")
+    if MODE == 'ask_chat':
+        data_array_text_location = 11
+    elif MODE == 'jira':
+        data_array_text_location = headers.index("Description")
 
 def patron_or_operator(chat_log, line_index):
     """
@@ -400,8 +403,7 @@ def add_file_data(filename, terms, return_data, export_filename=None):
     headers = data[1]
     data = data[0]
     #Split sentences
-    if MODE == "jira":
-        get_jira_data_array_text_location(headers)
+    get_data_array_text_location(headers)
     data = split_sentences(data)
 
     start = time.process_time()
