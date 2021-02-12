@@ -1,2 +1,24 @@
-# communication_analysis
+# Transcript Communication Analysis
 A repository containing documentation and code for the analysis of structured communication such as AskChat transcripts and JIRA tickets.
+### Currently supports:
+- [Ask a Librarian Service Logs](https://ask.scholarsportal.info/)
+- [JIRA Service Logs](https://www.atlassian.com/software/jira)
+
+### Features:
+Given one or more .csv files containing relevant data:
+- Identifies occurences of terms found in [text_terms_DS.txt](https://github.com/digitalutsc/communication_analysis/blob/main/text_terms_DS.txt)
+- Identifies potential file extensions
+- Identifies University of Toronto and University of Toronto Scarborough Course Codes
+- Identifies proper nouns using [spacy](https://spacy.io/)
+- Exports all occurrences ('hits') in a new csv with context and hit type, and anonymizes transcript metadata
+
+### Requirements:
+- [pandas](https://pandas.pydata.org/pandas-docs/stable/getting_started/install.html)
+- [numpy](https://numpy.org/install/)
+- [spacy v3.0+ and en_core_web_sm model](https://spacy.io/usage)
+
+### Usage:
+```bash
+python3 script.py [mode] [file] [export_file]
+```
+[mode] must be either 'ask_chat' or 'jira' depending on the input files. One or more input files may be added in between [mode] and [export_file]. Analysis data will be exported to a new file with name [export_file].
