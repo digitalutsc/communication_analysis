@@ -16,7 +16,7 @@ Given one or more .csv files containing relevant data:
 - Python 3
 - [spacy v3.0+](https://spacy.io/usage)
 - [spacy en_core_web_sm model](https://spacy.io/usage)
-- A file with name 'text_terms_DS.txt' containing terms to query
+- A file with name 'text_terms_DS.txt' containing terms to query. Appropriate formatting can be found [here](https://github.com/digitalutsc/communication_analysis/blob/main/text_terms_DS.txt)
 - If analyzing Ask Chat transcripts, a file with name 'names.csv' containing each name. Appropriate formatting can be found [here](https://github.com/digitalutsc/communication_analysis/blob/main/names.csv)
 
 ### Usage:
