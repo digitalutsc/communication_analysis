@@ -10,7 +10,7 @@ Given one or more .csv files containing relevant data:
 - Identifies potential file extensions
 - Identifies University of Toronto and University of Toronto Scarborough Course Codes
 - Identifies proper nouns using [spacy](https://spacy.io/)
-- Exports all occurrences ('hits') in a new csv with context and hit type, and anonymizes transcript metadata
+- Exports all occurrences ('hits') in a new csv with context and hit type, and removes columns that contain identifying information (e.g operator name, patron IP address)
 
 ### Requirements:
 - Python 3
