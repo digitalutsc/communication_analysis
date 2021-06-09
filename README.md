@@ -1,5 +1,6 @@
 # Transcript Communication Analysis
-A repository containing documentation and code for the analysis of structured communication such as AskChat transcripts and JIRA tickets.
+A repository containing documentation and code for the analysis of structured communication such as AskChat transcripts and JIRA tickets. This is designed for our context, but the pattern can be followed to extend these analysis tools to other structured data formats. 
+
 ### Currently supports:
 - [Ask a Librarian Service Logs](https://ask.scholarsportal.info/)
 - [JIRA Service Logs](https://www.atlassian.com/software/jira)
