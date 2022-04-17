@@ -1,9 +1,11 @@
 import sys, csv, re, time
 import spacy
 from spacy import displacy
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import math
 import en_core_web_sm
 nlp = spacy.load("en_core_web_sm")
+sentiment_analyzer = SentimentIntensityAnalyzer()
 
 #Text to analyze for query data and proper nouns must be in the column with index data_array_text_location
 #JIRA csv files have varying locations for this column, so function get_jira_data_array_text_location() is used
@@ -37,6 +39,8 @@ def get_data_array_text_location(headers):
         data_array_text_location = 11
     elif MODE == 'jira':
         data_array_text_location = headers.index("Description")
+    elif MODE == 'ask_chat_sentiment':
+        data_array_text_location = 11
 
 def patron_or_operator(chat_log, line_index):
     """
@@ -116,8 +120,12 @@ def split_sentences(data):
             if data[i][data_array_text_location][j] == []: #Remove sentences with no words
                 data[i][data_array_text_location].pop(j)
         #Add empty strings for return data
-        for j in range(5):
-            data[i].append([])
+        if MODE == "ask_chat" or MODE == "jira":
+            for j in range(5):
+                data[i].append([])
+        elif MODE == "ask_chat_sentiment":
+            for j in range(3):
+                data[i].append([])
     return data
 
 def line_to_string(line):
@@ -153,6 +161,24 @@ def append_hit_data(chat_log, hit_type, hit, hit_context, patron_or_operator, pr
     chat_log[len(chat_log) - 3].append(hit_context)
     chat_log[len(chat_log) - 2].append(patron_or_operator)
     chat_log[len(chat_log) - 1].append(proper_noun_type)
+    return chat_log
+
+def append_sentiment_data(chat_log, sentiment, patron_or_operator, context):
+    """
+    Given a chat log and a hit, append all hit data to the chat log
+    Parameters:
+        chat_log: A chat log list
+        hit_type: The string containing the type of hit
+        hit: The string containing the text found
+        hit_context: The string containing the message the hit was found in
+        patron_or_operator: The string containing whether the message was sent by a patron or an operator
+        proper_noun_type: If hit_type is equivalent to 'proper noun', the type of proper noun
+    Returns:
+        chat_log: A chat log list with all hit data appended
+    """
+    chat_log[len(chat_log) - 3].append(sentiment)
+    chat_log[len(chat_log) - 2].append(patron_or_operator)
+    chat_log[len(chat_log) - 1].append(context)
     return chat_log
 
 def analyze_proper_nouns(data):
@@ -287,6 +313,31 @@ def query(chat_log, line, terms, chat_id, line_index):
             chat_log = append_hit_data(chat_log,"Course Code",strip_punctuation(course_code_match.group()),line_string, patron_or_operator(chat_log, line_index))
     return chat_log
 
+def analyze_sentiment(data):
+    """
+    Find and analyze sentiment using VADER Sentiment Analysis, given the whole data set
+    Parameters:
+        data: The list containing all data to analyze
+    Returns:
+        data: The list containing all data to analyze, with an analysis of sentiment for each line appended to each chat log
+    """
+    all_logs = [] #A list of every chat log
+    for i in range(len(data)): #Iterate over each chat log
+        log = ""
+        for j in range(len(data[i][data_array_text_location])): #Iterate over each line
+            if len(data[i][data_array_text_location][j]) > 2:
+                for k in range(len(data[i][data_array_text_location][j]) - 1, -1, -1): #Iterate over each word
+                    if "http" in data[i][data_array_text_location][j][k].lower(): #Remove links
+                        data[i][data_array_text_location][j].pop(k)
+                patron_or_op = patron_or_operator(data[i], j)
+                line_string = line_to_string(data[i][data_array_text_location][j][2:])
+                #Mark whether sent by patron, operator, or neither
+                if "system message" not in line_string.lower():
+                    #Add sentiment for a particular line
+                    sentiment = str(sentiment_analyzer.polarity_scores(line_string)["compound"])
+                    data[i] = append_sentiment_data(data[i], sentiment, patron_or_op, line_string)
+    return data
+
 def iterate_query(data, terms):
     """
     Perform required querying tasks iteratively.
@@ -384,8 +435,46 @@ def export_csv(data, headers, name):
                     row.append(chat_log[len(chat_log) - 3][i])
                     row.append(chat_log[len(chat_log) - 1][i])
                     writer.writerow(row)
+        if MODE == "ask_chat_sentiment":
+            writer.writerow(["id", "guest", "protocol", "queue", "profile", "started", "wait", "duration", "referrer", "referrer domain", "Operator Institution", "UofT Operator Role", "UofT Operator Campus", "Redacted?", "Notes", "Sentiment", "Sent by", "Context"])
+            names = convertcsv("names.csv")[0]
+            for chat_log in data:
+                #If there are no hits for a chat, just output one row containing all metadata for that chat
+                if len(chat_log[len(chat_log) - 3]) == 0:
+                    row = chat_log[:len(chat_log) - 3]
+                    row.pop(11) #Remove text
+                    row.pop(9) #Remove ip
+                    row.pop(8) #Remove operator
+                    for i in range(6):
+                        row.append("")
+                    row.append("No hit!")
+                    for i in range(4):
+                        row.append("")
+                    writer.writerow(row)
+                else:
+                    for i in range(len(chat_log[len(chat_log) - 3])): #Iterate over each hit
+                        row = chat_log[:len(chat_log) - 3]
+                        row.pop(11) #Remove text
+                        row.pop(9) #Remove ip
+                        row.pop(8) #Remove operator
+                        if i > 0: #Remove id if not a unique log, so we can differentiate between unique logs easily
+                            row[0] = ""
+                        #Add operator data
+                        row.append(get_referrer_domain(chat_log[10]))
+                        row.append(get_operator_institution(chat_log[8]))
+                        operator_data = get_operator_data(chat_log[8], names)
+                        row.append(operator_data[0])
+                        row.append(operator_data[1])
+                        row.append("")
+                        row.append("")
+                        #Add all sentiment hit data
+                        row.append(chat_log[len(chat_log) - 3][i])
+                        row.append(chat_log[len(chat_log) - 2][i])
+                        row.append(chat_log[len(chat_log) - 1][i])
 
-#Take the file from filename, run querying and processing, and add its data to return_data.
+                        writer.writerow(row)
+
+#Take the file from filename, run processing, and add its data to return_data.
 def add_file_data(filename, terms, return_data, export_filename=None):
     """
     For a given file, analyze it for hits and add its data to return data. If export_filename has a value, then export the data as a .csv file.
@@ -406,14 +495,20 @@ def add_file_data(filename, terms, return_data, export_filename=None):
     get_data_array_text_location(headers)
     data = split_sentences(data)
 
-    start = time.process_time()
-    #Search for query terms
-    data = iterate_query(data, terms)
-    print("Querying took", time.process_time() - start, "seconds")
-    #Search for proper nouns
-    start = time.process_time()
-    data = analyze_proper_nouns(data)
-    print("Analyzing proper nouns took", time.process_time() - start, "seconds")
+    if MODE == "ask_chat" or MODE == "jira":
+        start = time.process_time()
+        #Search for query terms
+        data = iterate_query(data, terms)
+        print("Querying took", time.process_time() - start, "seconds")
+        #Search for proper nouns
+        start = time.process_time()
+        data = analyze_proper_nouns(data)
+        print("Analyzing proper nouns took", time.process_time() - start, "seconds")
+    elif MODE == "ask_chat_sentiment":
+        start = time.process_time()
+        #Perform sentiment analysis
+        data = analyze_sentiment(data)
+        print("Sentiment analysis took", time.process_time() - start, "seconds")
     #Add data to return_data
     for row in data:
         return_data.append(row)
@@ -426,9 +521,16 @@ def main():
     terms = convertcsv('text_terms_DS.txt')[0]
     terms = initialize_query_return_data(terms)
 
+    #List of accepted modes
+    modes = [
+    "ask_chat",
+    "jira",
+    "ask_chat_sentiment"
+    ]
+
     data = []
     if len(sys.argv) > 3:
-        if sys.argv[1] != "ask_chat" or sys.argv[1] != "jira":
+        if sys.argv[1] in modes:
             global MODE
             MODE = sys.argv[1]
         else:
