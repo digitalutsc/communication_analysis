@@ -5,3 +5,5 @@ smalldataset.csv
 sentiments.csv
 test_export.csv
 small_sentiments.csv
+names.csv
+text_terms_DS.txt
