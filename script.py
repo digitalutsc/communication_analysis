@@ -21,7 +21,7 @@ def convertcsv(filename):
     """
     data = []
     headers = []
-    with open(filename) as csvfile:
+    with open(filename, "r", encoding="utf8") as csvfile:
         reader = csv.reader(csvfile)
         headers = next(reader)
         for row in reader:
@@ -362,7 +362,7 @@ def export_csv(data, headers, name):
         headers: A list of all column headers
         name: The filename to export as
     """
-    with open(name, 'w') as csvfile:
+    with open(name, 'w', encoding="utf8") as csvfile:
         writer = csv.writer(csvfile)
 
         if MODE == "ask_chat":
