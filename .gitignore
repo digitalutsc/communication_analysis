@@ -7,5 +7,5 @@ test_export.csv
 small_sentiments.csv
 names.csv
 text_terms_DS.txt
-unique_operators.csv
-affiiliation_key.csv
+unique_operators_key.csv
+affiliation_key.csv

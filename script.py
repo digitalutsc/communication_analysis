@@ -2,6 +2,9 @@ import sys, csv, re, time
 import spacy
 from spacy import displacy
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from pattern.en import sentiment
+from textblob import TextBlob
+from statistics import mean
 import math
 import en_core_web_sm
 nlp = spacy.load("en_core_web_sm")
@@ -93,6 +96,43 @@ def get_operator_data(operator, names):
             return [name[4], name[5]]
     return ["", ""]
 
+def get_operator_type(operator, names):
+    """
+    Check if an operator is within a given list of names, and if so, return the type of employee this operator is.
+    Parameters:
+        operator: A string in format (operator_name)_(operator_institution).
+        names: A list of names, each in format [unique operator id, role].
+    Returns:
+        If a name is found in names, return their role.
+    """
+    for name in names:
+        if operator == name[0]:
+            return name[1]
+    return ""
+
+def get_operator_mismatch(operator, inst, affiliation_key):
+    """
+    Given an operator, an institution, and a list of affiliation keys, checks to see if the operator belongs to this institution.
+    Note that an operator's institution will be represented by a small code, and so affiliation_key is required to compare this code to
+    see if it matches inst.
+    Parameters:
+        operator: A string in format (operator_name)_(operator_institution).
+        inst: A string representing an institution.
+        affiliation_key: A list of institutions, each in format [institution code, institution].
+    Returns:
+        If the operator belongs to this institution, return 1. Otherwise return 0.
+    """
+    inst_code = "_" + get_operator_institution(operator)
+    #Give priority to institution names that exactly match the key
+    for key in affiliation_key:
+        if key[0] == inst_code and key[1] == inst:
+            return 1
+    #Perform a second check that is less strict - i.e check for 'toronto' in 'toronto-scarborough'
+    for key in affiliation_key:
+        if key[0] == inst_code and key[1] in inst:
+            return 1
+    return 0
+
 def get_referrer_domain(link):
     """
     Return the domain of a referring link, given the link
@@ -124,7 +164,7 @@ def split_sentences(data):
             for j in range(5):
                 data[i].append([])
         elif MODE == "ask_chat_sentiment":
-            for j in range(3):
+            for j in range(12):
                 data[i].append([])
     return data
 
@@ -162,74 +202,6 @@ def append_hit_data(chat_log, hit_type, hit, hit_context, patron_or_operator, pr
     chat_log[len(chat_log) - 2].append(patron_or_operator)
     chat_log[len(chat_log) - 1].append(proper_noun_type)
     return chat_log
-
-def append_sentiment_data(chat_log, sentiment, patron_or_operator, context):
-    """
-    Given a chat log and a hit, append all hit data to the chat log
-    Parameters:
-        chat_log: A chat log list
-        hit_type: The string containing the type of hit
-        hit: The string containing the text found
-        hit_context: The string containing the message the hit was found in
-        patron_or_operator: The string containing whether the message was sent by a patron or an operator
-        proper_noun_type: If hit_type is equivalent to 'proper noun', the type of proper noun
-    Returns:
-        chat_log: A chat log list with all hit data appended
-    """
-    chat_log[len(chat_log) - 3].append(sentiment)
-    chat_log[len(chat_log) - 2].append(patron_or_operator)
-    chat_log[len(chat_log) - 1].append(context)
-    return chat_log
-
-def analyze_proper_nouns(data):
-    """
-    Find and analyze proper nouns using Spacy, given the whole data set
-    Parameters:
-        data: The list containing all data to analyze
-    Returns:
-        data: The list containing all data to analyze, with all hits appended to each chat log
-    """
-    all_logs = [] #A list of every chat log
-    for i in range(len(data)): #Iterate over each chat log
-        log = ""
-        for j in range(len(data[i][data_array_text_location]) - 1, -1, -1): #Iterate over each line
-            if len(data[i][data_array_text_location][j]) > 2:
-                for k in range(len(data[i][data_array_text_location][j]) - 1, -1, -1): #Iterate over each word
-                    if "http" in data[i][data_array_text_location][j][k].lower(): #Remove links
-                        data[i][data_array_text_location][j].pop(k)
-                patron_or_op = patron_or_operator(data[i], j)
-                line_string = line_to_string(data[i][data_array_text_location][j][2:])
-                #Mark whether sent by patron, operator, or neither
-                if "system message" not in line_string.lower():
-                    if patron_or_op == "Operator":
-                        log = log + "chat_operator:" + line_string
-                    elif patron_or_op == "Patron":
-                        log = log + "chat_patron:" + line_string
-                    else:
-                        log = log + "chat_neither:" + line_string
-        all_logs.append(log)
-    docs = nlp.pipe(all_logs, disable=["tagger, parser"])
-    i = 0
-    for line in docs:
-        for entity in line.ents:
-            if entity.label_ != "CARDINAL" and entity.label_ != "ORDINAL" and entity.label_ != "QUANTITY" and entity.label_ != "MONEY" and entity.label_ != "PERCENT" and entity.label_ != "TIME" and entity.label_ != "DATE" and entity.text.lower() != "librarian" and "chat_operator" not in entity.text.lower() and "chat_patron" not in entity.text.lower() and "chat_neither" not in entity.text.lower():
-                text = str(line[:entity.start])
-                #Use earlier marking to track patron, operator, or neither
-                oploc = text.rfind("chat_operator:")
-                paloc = text.rfind("chat_patron:")
-                neloc = text.rfind("chat_neither:")
-                if oploc > paloc and oploc > neloc:
-                    patron_or_op = "Operator"
-                elif paloc > oploc and paloc > neloc:
-                    patron_or_op = "Patron"
-                elif neloc > oploc and neloc > paloc:
-                    patron_or_op = "Unable to find"
-                else:
-                    patron_or_op = "Error"
-                #Add the proper noun, chat log, sentence context, and proper noun type to the database
-                data[i] = append_hit_data(data[i],"Proper noun",entity.text.lower(), str(line[entity.start - 5:entity.end + 5]), patron_or_op, entity.label_)
-        i += 1
-    return data
 
 def initialize_query_return_data(terms):
     """
@@ -313,6 +285,56 @@ def query(chat_log, line, terms, chat_id, line_index):
             chat_log = append_hit_data(chat_log,"Course Code",strip_punctuation(course_code_match.group()),line_string, patron_or_operator(chat_log, line_index))
     return chat_log
 
+def analyze_proper_nouns(data):
+    """
+    Find and analyze proper nouns using Spacy, given the whole data set
+    Parameters:
+        data: The list containing all data to analyze
+    Returns:
+        data: The list containing all data to analyze, with all hits appended to each chat log
+    """
+    all_logs = [] #A list of every chat log
+    for i in range(len(data)): #Iterate over each chat log
+        log = ""
+        for j in range(len(data[i][data_array_text_location]) - 1, -1, -1): #Iterate over each line
+            if len(data[i][data_array_text_location][j]) > 2:
+                for k in range(len(data[i][data_array_text_location][j]) - 1, -1, -1): #Iterate over each word
+                    if "http" in data[i][data_array_text_location][j][k].lower(): #Remove links
+                        data[i][data_array_text_location][j].pop(k)
+                patron_or_op = patron_or_operator(data[i], j)
+                line_string = line_to_string(data[i][data_array_text_location][j][2:])
+                #Mark whether sent by patron, operator, or neither
+                if "system message" not in line_string.lower():
+                    if patron_or_op == "Operator":
+                        log = log + "chat_operator:" + line_string
+                    elif patron_or_op == "Patron":
+                        log = log + "chat_patron:" + line_string
+                    else:
+                        log = log + "chat_neither:" + line_string
+        all_logs.append(log)
+    docs = nlp.pipe(all_logs, disable=["tagger, parser"])
+    i = 0
+    for line in docs:
+        for entity in line.ents:
+            if entity.label_ != "CARDINAL" and entity.label_ != "ORDINAL" and entity.label_ != "QUANTITY" and entity.label_ != "MONEY" and entity.label_ != "PERCENT" and entity.label_ != "TIME" and entity.label_ != "DATE" and entity.text.lower() != "librarian" and "chat_operator" not in entity.text.lower() and "chat_patron" not in entity.text.lower() and "chat_neither" not in entity.text.lower():
+                text = str(line[:entity.start])
+                #Use earlier marking to track patron, operator, or neither
+                oploc = text.rfind("chat_operator:")
+                paloc = text.rfind("chat_patron:")
+                neloc = text.rfind("chat_neither:")
+                if oploc > paloc and oploc > neloc:
+                    patron_or_op = "Operator"
+                elif paloc > oploc and paloc > neloc:
+                    patron_or_op = "Patron"
+                elif neloc > oploc and neloc > paloc:
+                    patron_or_op = "Unable to find"
+                else:
+                    patron_or_op = "Error"
+                #Add the proper noun, chat log, sentence context, and proper noun type to the database
+                data[i] = append_hit_data(data[i],"Proper noun",entity.text.lower(), str(line[entity.start - 5:entity.end + 5]), patron_or_op, entity.label_)
+        i += 1
+    return data
+
 def analyze_sentiment(data):
     """
     Find and analyze sentiment using VADER Sentiment Analysis, given the whole data set
@@ -323,19 +345,76 @@ def analyze_sentiment(data):
     """
     all_logs = [] #A list of every chat log
     for i in range(len(data)): #Iterate over each chat log
-        log = ""
-        for j in range(len(data[i][data_array_text_location])): #Iterate over each line
+        #List of patron, operator lines
+        patron_lines = []
+        op_lines = []
+        #List of patron, operator scores for each line. Different scores depending on library used
+        patron_scores_vader = []
+        op_scores_vader = []
+        patron_scores_pattern = []
+        op_scores_pattern = []
+        patron_subjectivity_pattern = []
+        op_subjectivity_pattern = []
+        patron_scores_textblob = []
+        op_scores_textblob = []
+        patron_subjectivity_textblob = []
+        op_subjectivity_textblob = []
+        for j in range(len(data[i][data_array_text_location])): #Iterate over each line, get list of lines from patron/op
             if len(data[i][data_array_text_location][j]) > 2:
                 for k in range(len(data[i][data_array_text_location][j]) - 1, -1, -1): #Iterate over each word
                     if "http" in data[i][data_array_text_location][j][k].lower(): #Remove links
                         data[i][data_array_text_location][j].pop(k)
                 patron_or_op = patron_or_operator(data[i], j)
                 line_string = line_to_string(data[i][data_array_text_location][j][2:])
-                #Mark whether sent by patron, operator, or neither
+                #Check if sent by patron or operator, add to appropriate array
                 if "system message" not in line_string.lower():
-                    #Add sentiment for a particular line
-                    sentiment = str(sentiment_analyzer.polarity_scores(line_string)["compound"])
-                    data[i] = append_sentiment_data(data[i], sentiment, patron_or_op, line_string)
+                    if patron_or_op == 'Operator':
+                        op_lines.append(line_string)
+                    elif patron_or_op == 'Patron':
+                        patron_lines.append(line_string)
+        #Analyze sentiment using each library
+        for line_string in patron_lines:
+            patron_scores_vader.append(sentiment_analyzer.polarity_scores(line_string)["compound"])
+            pattern_sentiment = sentiment(line_string)
+            patron_scores_pattern.append(pattern_sentiment[0])
+            patron_subjectivity_pattern.append(pattern_sentiment[0])
+            textblob_analysis = TextBlob(line_string)
+            patron_scores_textblob.append(textblob_analysis.sentiment.polarity)
+            patron_subjectivity_textblob.append(textblob_analysis.sentiment.subjectivity)
+        for line_string in op_lines:
+            op_scores_vader.append(sentiment_analyzer.polarity_scores(line_string)["compound"])
+            pattern_sentiment = sentiment(line_string)
+            op_scores_pattern.append(pattern_sentiment[0])
+            op_subjectivity_pattern.append(pattern_sentiment[0])
+            textblob_analysis = TextBlob(line_string)
+            op_scores_textblob.append(textblob_analysis.sentiment.polarity)
+            op_subjectivity_textblob.append(textblob_analysis.sentiment.subjectivity)
+        #Add data from each library to our list of all data. Get the average score of each line from each patron/op
+        if len(op_lines) > 0:
+            data[i][len(data[i]) - 1] = mean(op_subjectivity_textblob)
+            data[i][len(data[i]) - 3] = mean(op_scores_textblob)
+            data[i][len(data[i]) - 5] = mean(op_subjectivity_pattern)
+            data[i][len(data[i]) - 7] = mean(op_scores_pattern)
+            data[i][len(data[i]) - 9] = mean(op_scores_vader)
+        else:
+            data[i][len(data[i]) - 1] = 'No Data'
+            data[i][len(data[i]) - 3] = 'No Data'
+            data[i][len(data[i]) - 5] = 'No Data'
+            data[i][len(data[i]) - 7] = 'No Data'
+            data[i][len(data[i]) - 9] = 'No Data'
+        if len(patron_lines) > 0:
+            data[i][len(data[i]) - 2] = mean(patron_subjectivity_textblob)
+            data[i][len(data[i]) - 4] = mean(patron_scores_textblob)
+            data[i][len(data[i]) - 6] = mean(patron_subjectivity_pattern)
+            data[i][len(data[i]) - 8] = mean(patron_scores_pattern)
+            data[i][len(data[i]) - 10] = mean(patron_scores_vader)
+        else:
+            data[i][len(data[i]) - 2] = 'No Data'
+            data[i][len(data[i]) - 4] = 'No Data'
+            data[i][len(data[i]) - 6] = 'No Data'
+            data[i][len(data[i]) - 8] = 'No Data'
+            data[i][len(data[i]) - 10] = 'No Data'
+            
     return data
 
 def iterate_query(data, terms):
@@ -436,43 +515,23 @@ def export_csv(data, headers, name):
                     row.append(chat_log[len(chat_log) - 1][i])
                     writer.writerow(row)
         if MODE == "ask_chat_sentiment":
-            writer.writerow(["id", "guest", "protocol", "queue", "profile", "started", "wait", "duration", "referrer", "referrer domain", "Operator Institution", "UofT Operator Role", "UofT Operator Campus", "Redacted?", "Notes", "Sentiment", "Sent by", "Context"])
-            names = convertcsv("names.csv")[0]
+            writer.writerow(["Guest ID", "Operator Institution", "Date", "Wait time", "Duration", "Referrer", "Operator Role", "Affiliation Match", "Vader Patron Score", "Vader Operator Score", "Pattern Patron Score", "Pattern Operator Score", "Pattern Patron Subjectivity", "Pattern Operator Subjectivity", "Textblob Patron Score", "Textblob Operator Score", "Textblob Patron Subjectivity", "Textblob Operator Subjectivity"])
+            names = convertcsv("unique_operators_key.csv")[0]
+            affiliation_key = convertcsv("affiliation_key.csv")[0]
             for chat_log in data:
-                #If there are no hits for a chat, just output one row containing all metadata for that chat
-                if len(chat_log[len(chat_log) - 3]) == 0:
-                    row = chat_log[:len(chat_log) - 3]
-                    row.pop(11) #Remove text
-                    row.pop(9) #Remove ip
-                    row.pop(8) #Remove operator
-                    for i in range(6):
-                        row.append("")
-                    row.append("No hit!")
-                    for i in range(4):
-                        row.append("")
-                    writer.writerow(row)
-                else:
-                    for i in range(len(chat_log[len(chat_log) - 3])): #Iterate over each hit
-                        row = chat_log[:len(chat_log) - 3]
-                        row.pop(11) #Remove text
-                        row.pop(9) #Remove ip
-                        row.pop(8) #Remove operator
-                        if i > 0: #Remove id if not a unique log, so we can differentiate between unique logs easily
-                            row[0] = ""
-                        #Add operator data
-                        row.append(get_referrer_domain(chat_log[10]))
-                        row.append(get_operator_institution(chat_log[8]))
-                        operator_data = get_operator_data(chat_log[8], names)
-                        row.append(operator_data[0])
-                        row.append(operator_data[1])
-                        row.append("")
-                        row.append("")
-                        #Add all sentiment hit data
-                        row.append(chat_log[len(chat_log) - 3][i])
-                        row.append(chat_log[len(chat_log) - 2][i])
-                        row.append(chat_log[len(chat_log) - 1][i])
+                row = chat_log
+                #Add operator data
+                row[12] = get_operator_type(chat_log[8], names)
+                row[13] = get_operator_mismatch(chat_log[8], chat_log[3], affiliation_key)
+                #Anonymize/remove unnecessary rows
+                row.pop(11)
+                row.pop(9)
+                row.pop(8)
+                row.pop(4)
+                row.pop(2)
+                row.pop(0)
 
-                        writer.writerow(row)
+                writer.writerow(row)
 
 #Take the file from filename, run processing, and add its data to return_data.
 def add_file_data(filename, terms, return_data, export_filename=None):
